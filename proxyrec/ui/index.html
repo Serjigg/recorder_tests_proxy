@@ -1,0 +1,934 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>proxyrec</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%232f6fed'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f9fafb; --border: #e2e5ea; --text: #1c2230; --muted: #6b7382;
+  --accent: #2f6fed; --accent-weak: #e8effd; --ok: #1d9a52; --ok-weak: #e4f5eb; --fail: #d43d3d; --fail-weak: #fcebeb;
+  --warn: #b7791f; --warn-weak: #fdf3e1; --code: #f3f4f7; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12151a; --panel: #1a1e25; --panel-2: #1f242c; --border: #2b313b; --text: #e3e6eb; --muted: #8a93a1;
+    --accent: #5d8dff; --accent-weak: #1d2a45; --ok: #3cc779; --ok-weak: #15301f; --fail: #ff6b6b; --fail-weak: #3a1c1f;
+    --warn: #e0a84a; --warn-weak: #33280f; --code: #15191f; --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
+a { color: var(--accent); }
+body.busy, body.busy * { cursor: progress !important; }
+
+.app { display: grid; grid-template-rows: 52px 1fr; height: 100vh; }
+header { display: flex; align-items: center; gap: 12px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.logo { font-weight: 700; letter-spacing: .2px; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.logo .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+header .spacer { flex: 1; }
+header input { width: 260px; }
+.layout { display: grid; grid-template-columns: 290px 1fr; min-height: 0; }
+aside { border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+aside .search { padding: 12px; border-bottom: 1px solid var(--border); }
+aside .search input { width: 100%; }
+.tests { overflow: auto; flex: 1; padding: 6px; }
+.test-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.test-item:hover { background: var(--panel-2); }
+.test-item.active { background: var(--accent-weak); }
+.test-item .name { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.test-item .meta { color: var(--muted); font-size: 12px; }
+.test-item .grow { flex: 1; min-width: 0; }
+aside .foot { padding: 10px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+main { overflow: auto; min-width: 0; padding: 20px 24px 40px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--panel); padding: 6px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.btn:hover { background: var(--panel-2); }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.07); }
+.btn.danger { color: var(--fail); }
+.btn.rec { color: var(--fail); font-weight: 600; }
+.btn.small { padding: 2px 8px; font-size: 12px; border-radius: 6px; }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.ghost:hover { background: var(--panel-2); }
+input[type=text], input[type=number], select { border: 1px solid var(--border); background: var(--panel); border-radius: 7px; padding: 6px 10px; outline: none; }
+input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+
+.badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; letter-spacing: .3px; }
+.badge.pass { background: var(--ok-weak); color: var(--ok); }
+.badge.fail { background: var(--fail-weak); color: var(--fail); }
+.badge.none { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+.icon { width: 18px; text-align: center; font-weight: 700; flex: none; }
+.icon.pass { color: var(--ok); } .icon.fail { color: var(--fail); } .icon.none { color: var(--muted); }
+
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+.card + .card { margin-top: 16px; }
+.card-h { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.card-b { padding: 14px 16px; }
+.muted { color: var(--muted); }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+h1 { font-size: 20px; margin: 0; }
+h3 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+
+.title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.title-row .spacer { flex: 1; }
+.sub { color: var(--muted); margin-bottom: 16px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab { padding: 8px 12px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--muted); margin-bottom: -1px; }
+.tab.active { color: var(--text); border-color: var(--accent); font-weight: 600; }
+.tab .count { font-size: 11px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+
+.steps-layout { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 16px; align-items: start; }
+.step-list { padding: 4px; max-height: calc(100vh - 230px); overflow: auto; }
+.step { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; cursor: pointer; }
+.step:hover { background: var(--panel-2); }
+.step.active { background: var(--accent-weak); }
+.step .n { color: var(--muted); font-size: 12px; width: 22px; text-align: right; flex: none; }
+.method { font-family: var(--mono); font-size: 11px; font-weight: 700; width: 44px; flex: none; }
+.m-GET { color: var(--ok); } .m-POST { color: var(--accent); } .m-PUT, .m-PATCH { color: var(--warn); } .m-DELETE { color: var(--fail); }
+.step .path { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.code { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+.diffs { border: 1px solid var(--fail); background: var(--fail-weak); border-radius: 8px; padding: 8px 10px; margin-bottom: 14px; }
+.diff-line { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
+.diff-line .txt { font-family: var(--mono); font-size: 12.5px; flex: 1; word-break: break-word; }
+.textdiff { margin: 4px 0 6px; padding: 8px; background: var(--panel); border-radius: 6px; overflow: auto; max-height: 300px; }
+.textdiff .add { color: var(--ok); } .textdiff .del { color: var(--fail); } .textdiff .hunk { color: var(--muted); }
+.diffs.slow { border-color: var(--warn); background: var(--warn-weak); }
+.timing { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+.timing b { color: var(--text); font-weight: 600; }
+.timing b.t-bad, .ms.t-bad { color: var(--warn); font-weight: 700; }
+.step .ms { font-family: var(--mono); font-size: 11.5px; color: var(--muted); width: 62px; text-align: right; flex: none; }
+.badge.slow { background: var(--warn-weak); color: var(--warn); }
+.reasons { display: flex; gap: 8px; flex-wrap: wrap; margin: -8px 0 14px; }
+.reason { font-size: 12.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+.reason.slow { background: var(--warn-weak); color: var(--warn); }
+.reason.fail { background: var(--fail-weak); color: var(--fail); }
+.ok-box { border: 1px solid var(--ok); background: var(--ok-weak); color: var(--ok); border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
+
+.resp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pane { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; min-width: 0; }
+.pane-h { padding: 7px 10px; background: var(--panel-2); border-bottom: 1px solid var(--border); font-weight: 600; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+.pane-b { padding: 8px 10px; }
+pre.body { margin: 0; padding: 10px; background: var(--code); border-radius: 6px; max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+details summary { cursor: pointer; color: var(--muted); font-size: 12.5px; margin: 4px 0; }
+table.kv { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; margin-bottom: 8px; }
+table.kv td { padding: 2px 6px; border-bottom: 1px solid var(--border); vertical-align: top; word-break: break-all; }
+table.kv td:first-child { color: var(--muted); white-space: nowrap; width: 1%; }
+
+table.list { width: 100%; border-collapse: collapse; }
+table.list th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+table.list td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.list tr:last-child td { border-bottom: none; }
+.empty { color: var(--muted); padding: 10px 0; }
+
+.form { display: grid; grid-template-columns: 170px 1fr; gap: 10px 14px; align-items: center; max-width: 680px; }
+.form label { color: var(--muted); }
+.form input[type=text], .form input[type=number] { width: 100%; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.seg button { border: none; background: var(--panel); padding: 6px 12px; cursor: pointer; }
+.seg button.on { background: var(--accent); color: #fff; }
+
+.rec-live { display: flex; align-items: center; gap: 10px; }
+.pulse { width: 12px; height: 12px; border-radius: 50%; background: var(--fail); animation: pulse 1.2s infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(212,61,61,.55); } 70% { box-shadow: 0 0 0 10px rgba(212,61,61,0); } 100% { box-shadow: 0 0 0 0 rgba(212,61,61,0); } }
+.hint { font-family: var(--mono); background: var(--code); padding: 8px 10px; border-radius: 6px; margin: 10px 0; }
+.rec-chip { display: inline-flex; align-items: center; gap: 6px; color: var(--fail); font-weight: 600; cursor: pointer; }
+.rec-chip .pulse { width: 8px; height: 8px; }
+
+.home-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; }
+.home-steps .card-b b { display: block; margin-bottom: 4px; }
+.stats { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+.stat { padding: 12px 16px; min-width: 140px; }
+.stat .v { font-size: 24px; font-weight: 700; }
+
+dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); padding: 0; width: min(520px, 92vw); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+dialog::backdrop { background: rgba(10,14,20,.45); }
+dialog .card-b { display: grid; gap: 12px; }
+dialog .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+dialog input[type=text] { width: 100%; }
+
+#toasts { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; z-index: 50; }
+.toast { background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; padding: 10px 14px; box-shadow: 0 4px 16px rgba(0,0,0,.15); max-width: 420px; }
+.toast.err { border-left-color: var(--fail); }
+.toast.ok { border-left-color: var(--ok); }
+.banner { background: var(--accent-weak); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; }
+.spin { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 1100px) { .resp-grid { grid-template-columns: 1fr; } .steps-layout { grid-template-columns: 1fr; } .step-list { max-height: 260px; } }
+@media (max-width: 760px) { .app { height: auto; min-height: 100vh; } .layout { grid-template-columns: 1fr; } aside { border-right: none; border-bottom: 1px solid var(--border); max-height: 220px; } aside .foot { display: none; } header input { width: 140px; } .form { grid-template-columns: 1fr; } main { padding: 16px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo" data-action="home"><span class="dot"></span>proxyrec</div>
+    <span id="recChip"></span>
+    <div class="spacer"></div>
+    <input type="text" id="target" placeholder="Целевой адрес (необязательно)" title="Подменить схему и хост при прогоне, например http://staging:8080">
+    <input type="number" id="maxTime" min="1" placeholder="Лимит, мс" title="Приемлемое время ответа для прогона, мс. Действует на шаги и тесты без своего лимита." style="width:110px">
+    <button class="btn" data-action="run-all">▶ Прогнать все</button>
+    <button class="btn rec" data-action="record-form">● Новая запись</button>
+  </header>
+  <div class="layout">
+    <aside>
+      <div class="search"><input type="text" id="filter" placeholder="Поиск теста"></div>
+      <div class="tests" id="tests"></div>
+      <div class="foot" id="foot"></div>
+    </aside>
+    <main id="main"></main>
+  </div>
+</div>
+
+<dialog id="ignoreDlg">
+  <form method="dialog">
+    <div class="card-h">Игнорировать при сравнении</div>
+    <div class="card-b">
+      <div class="row">
+        <label class="muted" style="width:90px">Что</label>
+        <select id="igKind">
+          <option value="json_paths">JSON-путь</option>
+          <option value="regex">Регулярное выражение</option>
+          <option value="headers">Заголовок ответа</option>
+        </select>
+      </div>
+      <div class="row">
+        <label class="muted" style="width:90px">Шаблон</label>
+        <input type="text" id="igPattern" style="flex:1" class="mono">
+      </div>
+      <label class="row" id="igGeneralizeRow"><input type="checkbox" id="igGeneralize"> во всех элементах массивов (индексы → [*])</label>
+      <div class="row">
+        <label class="muted" style="width:90px">Где</label>
+        <select id="igScope"></select>
+      </div>
+      <div class="muted" id="igHelp" style="font-size:12.5px"></div>
+    </div>
+    <div class="actions">
+      <button class="btn" type="button" id="igCancel">Отмена</button>
+      <button class="btn primary" value="ok" id="igOk">Добавить</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="limitDlg">
+  <form method="dialog">
+    <div class="card-h">Приемлемое время ответа</div>
+    <div class="card-b">
+      <div class="row">
+        <label class="muted" style="width:90px">Лимит</label>
+        <input type="number" id="limMs" min="1" placeholder="пусто — без лимита" style="width:200px"> <span class="muted">мс</span>
+      </div>
+      <div class="row">
+        <label class="muted" style="width:90px">Где</label>
+        <select id="limScope"></select>
+      </div>
+      <div class="muted" style="font-size:12.5px">Лимит шага важнее лимита теста, лимит теста важнее поля «Лимит, мс» в шапке. Изменение сразу пересчитывает последний прогон.</div>
+    </div>
+    <div class="actions">
+      <button class="btn" type="button" id="limCancel">Отмена</button>
+      <button class="btn primary" value="ok">Сохранить</button>
+    </div>
+  </form>
+</dialog>
+<div id="toasts"></div>
+
+<script>
+"use strict";
+const $ = (sel, root = document) => root.querySelector(sel);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const T = (name) => `/api/tests/${encodeURIComponent(name)}`;
+
+const S = {
+  tests: [], recording: { active: false }, current: null,
+  view: "home", name: null, stepId: null, tab: "steps",
+  candidates: null, recMode: "proxy", recDraft: null, busy: false,
+};
+
+function store(key, val) {
+  try { if (val === undefined) return localStorage.getItem(key); localStorage.setItem(key, val); } catch (e) { return null; }
+}
+
+async function api(method, path, body) {
+  const r = await fetch(path, {
+    method, headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
+  return data;
+}
+
+function toast(msg, kind = "") {
+  const el = document.createElement("div");
+  el.className = `toast ${kind}`;
+  el.textContent = msg;
+  $("#toasts").append(el);
+  while ($("#toasts").children.length > 3) $("#toasts").firstElementChild.remove();
+  setTimeout(() => el.remove(), kind === "err" ? 7000 : 3500);
+}
+
+async function busy(btn, fn) {
+  if (S.busy) return;
+  S.busy = true;
+  document.body.classList.add("busy");
+  const html = btn ? btn.innerHTML : "";
+  if (btn) { btn.disabled = true; btn.innerHTML = `<span class="spin"></span> ${html}`; }
+  try { return await fn(); }
+  catch (e) { toast(e.message, "err"); }
+  finally { S.busy = false; document.body.classList.remove("busy"); if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = html; } }
+}
+
+// ---------- данные ----------
+
+async function loadState() {
+  const st = await api("GET", "/api/state");
+  S.tests = st.tests;
+  S.recording = st.recording;
+  renderSidebar();
+  renderRecChip();
+}
+
+async function openTest(name, opts = {}) {
+  S.view = "test"; S.name = name;
+  if (!opts.keepStep) { S.stepId = null; S.candidates = null; S.tab = opts.tab || "steps"; }
+  if (location.hash !== `#/test/${encodeURIComponent(name)}`) history.replaceState(null, "", `#/test/${encodeURIComponent(name)}`);
+  try { S.current = await api("GET", T(name)); }
+  catch (e) { toast(e.message, "err"); return goHome(); }
+  // Оставляем выбранный шаг, только если он упал или упавших нет; иначе показываем первый упавший.
+  const failed = S.current.run?.steps.find((s) => !s.passed);
+  const curFailed = S.current.run?.steps.some((s) => s.id === S.stepId && !s.passed);
+  const exists = S.current.test.steps.some((s) => s.id === S.stepId);
+  if (!exists || (failed && !curFailed)) S.stepId = failed ? failed.id : S.current.test.steps[0]?.id ?? null;
+  renderSidebar();
+  renderMain();
+}
+
+function goHome() {
+  S.view = "home"; S.name = null; S.current = null;
+  history.replaceState(null, "", "#/");
+  renderSidebar(); renderMain();
+}
+
+// ---------- сайдбар и шапка ----------
+
+function statusOf(t) { return t.status || "none"; }
+const ICON = { pass: "✓", fail: "✗", none: "•" };
+
+function fmtTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100;
+  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+}
+
+function renderSidebar() {
+  const q = $("#filter").value.trim().toLowerCase();
+  const list = S.tests.filter((t) => !q || t.name.toLowerCase().includes(q));
+  $("#tests").innerHTML = list.length ? list.map((t) => `
+    <div class="test-item ${S.view === "test" && S.name === t.name ? "active" : ""}" data-action="open" data-name="${esc(t.name)}">
+      <span class="icon ${statusOf(t)}">${ICON[statusOf(t)]}</span>
+      <div class="grow">
+        <div class="name">${esc(t.name)}</div>
+        <div class="meta">${t.steps} ${plural(t.steps, "шаг", "шага", "шагов")}${t.run_at ? " · " + fmtTime(t.run_at) : " · не запускался"}</div>
+      </div>
+      ${t.failed_time ? `<span class="badge slow" title="превышено время отклика">⏱${t.failed_time}</span>` : ""}
+      ${t.failed_response ? `<span class="badge fail" title="ответ отличается">≠${t.failed_response}</span>` : ""}
+    </div>`).join("") : `<div class="empty" style="padding:12px">${S.tests.length ? "Ничего не найдено" : "Тестов пока нет"}</div>`;
+  const pass = S.tests.filter((t) => t.status === "pass").length, fail = S.tests.filter((t) => t.status === "fail").length;
+  $("#foot").textContent = `Всего ${S.tests.length} · прошло ${pass} · упало ${fail}`;
+}
+
+function renderRecChip() {
+  const r = S.recording;
+  $("#recChip").innerHTML = r.active
+    ? `<span class="rec-chip" data-action="record-form"><span class="pulse"></span>Запись: ${esc(r.name)} (${r.steps.length})</span>` : "";
+}
+
+// ---------- главная ----------
+
+function renderHome() {
+  const pass = S.tests.filter((t) => t.status === "pass").length, fail = S.tests.filter((t) => t.status === "fail").length;
+  const never = S.tests.length - pass - fail;
+  return `
+    <h1>Тесты по записанному трафику</h1>
+    <div class="stats">
+      <div class="card stat"><div class="muted">Всего</div><div class="v">${S.tests.length}</div></div>
+      <div class="card stat"><div class="muted">Прошло</div><div class="v" style="color:var(--ok)">${pass}</div></div>
+      <div class="card stat"><div class="muted">Упало</div><div class="v" style="color:var(--fail)">${fail}</div></div>
+      <div class="card stat"><div class="muted">Не запускались</div><div class="v">${never}</div></div>
+    </div>
+    <div class="home-steps">
+      <div class="card"><div class="card-b"><b>1. Запись</b><span class="muted">«Новая запись» поднимает прокси. Направьте через него приложение и выполните действия.</span></div></div>
+      <div class="card"><div class="card-b"><b>2. Корреляция</b><span class="muted">Найдите токены и id, которые сервер выдаёт заново при каждом прогоне.</span></div></div>
+      <div class="card"><div class="card-b"><b>3. Прогон</b><span class="muted">Запросы повторяются, ответы сравниваются с записанными.</span></div></div>
+      <div class="card"><div class="card-b"><b>4. Разбор</b><span class="muted">Отличия: принять новый ответ как эталон или игнорировать изменчивое поле.</span></div></div>
+    </div>
+    <div class="row" style="margin-top:20px">
+      <button class="btn rec" data-action="record-form">● Новая запись</button>
+      ${S.tests.length ? `<button class="btn" data-action="run-all">▶ Прогнать все</button>` : ""}
+    </div>`;
+}
+
+// ---------- запись ----------
+
+function renderRecord() {
+  const r = S.recording;
+  if (r.active) {
+    return `
+      <div class="title-row"><div class="rec-live"><span class="pulse"></span><h1>Идёт запись: ${esc(r.name)}</h1></div>
+        <div class="spacer"></div><button class="btn primary" data-action="record-stop">■ Остановить запись</button></div>
+      <div class="sub">${esc(r.title)}</div>
+      <div class="hint">${esc(r.hint)}</div>
+      <div class="card">
+        <div class="card-h">Записанные запросы <span class="badge none">${r.steps.length}</span></div>
+        ${r.steps.length ? `<div class="step-list" style="max-height:none">${r.steps.map((s) => `
+          <div class="step"><span class="n">${s.id}</span><span class="method m-${esc(s.method)}">${esc(s.method)}</span>
+            <span class="path" title="${esc(s.url)}">${esc(s.url)}</span><span class="code">${s.status}</span></div>`).join("")}</div>`
+          : `<div class="card-b empty">Ждём запросы от приложения…</div>`}
+      </div>`;
+  }
+  const last = { ...JSON.parse(store("recForm") || "{}"), ...S.recDraft };
+  const draft = S.recDraft || {};
+  const reverse = S.recMode === "reverse";
+  return `
+    <h1>Новая запись</h1>
+    <div class="sub">Прокси запишет каждый HTTP-запрос и ответ как шаг теста.</div>
+    <div class="card"><div class="card-b">
+      <form id="recForm" class="form" autocomplete="off">
+        <label>Имя теста</label><input type="text" name="name" required placeholder="например: оформление_заказа" value="${esc(draft.name || "")}">
+        <label>Режим</label>
+        <div><div class="seg">
+          <button type="button" data-action="rec-mode" data-mode="proxy" class="${reverse ? "" : "on"}">HTTP-прокси</button>
+          <button type="button" data-action="rec-mode" data-mode="reverse" class="${reverse ? "on" : ""}">Reverse-прокси</button>
+        </div></div>
+        ${reverse ? `<label>Адрес сервера</label><input type="text" name="reverse" required placeholder="http://backend:8080" value="${esc(last.reverse || "")}">` : ""}
+        <label>Порт прокси</label><input type="number" name="port" min="1" max="65535" value="${esc(last.port || 8888)}" style="max-width:140px">
+        <label>Только хосты</label><input type="text" name="hosts" placeholder="api.local, example.com — пусто = все" value="${esc(last.hosts || "")}">
+        <label></label><label class="row"><input type="checkbox" name="keep_static" ${last.keep_static ? "checked" : ""}> записывать статику (js, css, картинки)</label>
+        <label></label><label class="row"><input type="checkbox" name="overwrite"> перезаписать, если тест с таким именем есть</label>
+        <label></label><div><button class="btn primary" type="submit">● Начать запись</button></div>
+      </form>
+    </div></div>
+    <div class="card"><div class="card-b muted">
+      ${reverse
+        ? "Reverse-режим: приложение обращается к прокси как к серверу, а прокси пересылает запросы на указанный адрес. Подходит, если в приложении нельзя настроить прокси."
+        : "HTTP-прокси: укажите адрес прокси в настройках приложения или в переменной окружения HTTP_PROXY. HTTPS не записывается."}
+    </div></div>`;
+}
+
+let recPoll = null;
+function startRecPoll() {
+  clearInterval(recPoll);
+  recPoll = setInterval(async () => {
+    try {
+      S.recording = await api("GET", "/api/record");
+      renderRecChip();
+      if (S.view === "record") renderMain();
+      if (!S.recording.active) { clearInterval(recPoll); loadState(); }
+    } catch (e) { /* сервер мог быть перезапущен */ }
+  }, 1000);
+}
+
+// ---------- тест ----------
+
+function runStep(id) { return S.current.run?.steps.find((s) => s.id === id); }
+
+function renderTest() {
+  const { test, run } = S.current;
+  const st = run ? (run.passed ? "pass" : "fail") : "none";
+  const failed = run ? run.steps.filter((s) => s.diffs?.length).length : 0;   // принимать есть смысл только другой ответ
+  const slow = run ? run.steps.filter((s) => s.slow).length : 0;
+  const total = run ? run.steps.reduce((a, s) => a + (s.elapsed_ms || 0), 0) : null;
+  const ignoreCount = countIgnore(test);
+  const recActive = S.recording.active && S.recording.name === test.name;
+  return `
+    <div class="title-row">
+      <h1>${esc(test.name)}</h1>
+      <span class="badge ${st}">${st === "pass" ? "PASS" : st === "fail" ? "FAIL" : "НЕ ЗАПУСКАЛСЯ"}</span>
+      <div class="spacer"></div>
+      ${failed ? `<button class="btn" data-action="accept-all">Принять все упавшие (${failed})</button>` : ""}
+      <button class="btn primary" data-action="run" ${recActive ? "disabled" : ""}>▶ Прогнать</button>
+      <button class="btn danger ghost" data-action="delete-test" title="Удалить тест">Удалить</button>
+    </div>
+    <div class="sub">${test.steps.length} ${plural(test.steps.length, "шаг", "шага", "шагов")} · записан ${fmtTime(test.created)}${run ? ` · последний прогон ${fmtTime(run.run_at)}${run.target ? " на " + esc(run.target) : ""}, ${fmtMs(total)}` : ""}
+      · лимит времени теста: <a href="#" data-action="limit-edit" data-step="">${test.max_time_ms ? fmtMs(test.max_time_ms) : "не задан"}</a></div>
+    ${run && !run.passed ? `<div class="reasons">
+      ${slow ? `<span class="reason slow">⏱ превышено время: ${slow} ${plural(slow, "шаг", "шага", "шагов")}</span>` : ""}
+      ${failed ? `<span class="reason fail">≠ ответ отличается: ${failed} ${plural(failed, "шаг", "шага", "шагов")}</span>` : ""}
+      ${run.steps.some((s) => s.error) ? `<span class="reason fail">запрос не выполнен</span>` : ""}
+    </div>` : ""}
+    <div class="tabs">
+      <div class="tab ${S.tab === "steps" ? "active" : ""}" data-action="tab" data-tab="steps">Шаги</div>
+      <div class="tab ${S.tab === "ignore" ? "active" : ""}" data-action="tab" data-tab="ignore">Игнор<span class="count">${ignoreCount}</span></div>
+      <div class="tab ${S.tab === "corr" ? "active" : ""}" data-action="tab" data-tab="corr">Корреляция<span class="count">${test.extract.length}</span></div>
+    </div>
+    ${S.tab === "steps" ? renderSteps() : S.tab === "ignore" ? renderIgnore() : renderCorr()}`;
+}
+
+function countIgnore(test) {
+  const n = (ig) => ig ? (ig.json_paths || []).length + (ig.regex || []).length + (ig.headers || []).length : 0;
+  return n(test.ignore) + test.steps.reduce((a, s) => a + n(s.ignore), 0);
+}
+
+function shortUrl(url) {
+  try { const u = new URL(url); return u.pathname + u.search; } catch (e) { return url; }
+}
+
+function renderSteps() {
+  const { test } = S.current;
+  if (!test.steps.length) return `<div class="empty">В тесте нет шагов.</div>`;
+  const list = test.steps.map((s) => {
+    const r = runStep(s.id), st = r ? (r.passed ? "pass" : "fail") : "none";
+    return `<div class="step ${s.id === S.stepId ? "active" : ""}" data-action="step" data-id="${s.id}">
+      <span class="icon ${st}">${ICON[st]}</span><span class="n">${s.id}</span>
+      <span class="method m-${esc(s.request.method)}">${esc(s.request.method)}</span>
+      <span class="path" title="${esc(s.request.url)}">${esc(shortUrl(s.request.url))}</span>
+      <span class="code">${r?.actual ? (r.actual.status !== s.response.status ? `${s.response.status}→${r.actual.status}` : r.actual.status) : s.response.status}</span>
+      <span class="ms ${r?.slow ? "t-bad" : ""}" title="${r ? "время в прогоне" : "время при записи"}">${r ? fmtMs(r.elapsed_ms) : fmtMs(s.elapsed_ms)}</span>
+    </div>`;
+  }).join("");
+  return `<div class="steps-layout">
+    <div class="card step-list">${list}</div>
+    <div>${renderStepDetail()}</div>
+  </div>`;
+}
+
+function bodyText(r) {
+  if (!r) return "";
+  if ("json" in r) return JSON.stringify(r.json, null, 2);
+  if ("body_b64" in r) return `[бинарные данные, ${Math.floor(r.body_b64.length * 3 / 4)} байт]`;
+  const b = r.body || "";
+  if (/^\s*[\[{]/.test(b)) { try { return JSON.stringify(JSON.parse(b), null, 2); } catch (e) { /* не JSON */ } }
+  return b;
+}
+
+function headersTable(headers) {
+  if (!headers?.length) return `<div class="muted">нет</div>`;
+  return `<table class="kv">${headers.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>`;
+}
+
+function respPane(title, r, cls = "") {
+  if (!r) return `<div class="pane"><div class="pane-h">${title}</div><div class="pane-b muted">нет ответа</div></div>`;
+  const body = bodyText(r);
+  return `<div class="pane ${cls}">
+    <div class="pane-h">${title} <span class="code">${r.status}</span></div>
+    <div class="pane-b">
+      <details><summary>Заголовки (${r.headers.length})</summary>${headersTable(r.headers)}</details>
+      ${body ? `<pre class="body">${esc(body)}</pre>` : `<div class="muted">пустое тело</div>`}
+    </div></div>`;
+}
+
+function diffActions(d) {
+  const m = d.match(/^(\$[^:]*):/);
+  if (m && m[1] !== "$") return `<button class="btn small" data-action="ignore-diff" data-kind="json_paths" data-pattern="${esc(m[1].replace(/^\$\.?/, ""))}">игнорировать</button>`;
+  const h = d.match(/^header ([^:]+):/);
+  if (h) return `<button class="btn small" data-action="ignore-diff" data-kind="headers" data-pattern="${esc(h[1])}">игнорировать</button>`;
+  if (d.startsWith("body (текст")) return `<button class="btn small" data-action="ignore-diff" data-kind="regex" data-pattern="">игнор по regex</button>`;
+  return "";
+}
+
+function renderDiffs(diffs) {
+  let html = "", text = [];
+  const flush = () => {
+    if (!text.length) return;
+    html += `<pre class="textdiff">${text.map((l) => {
+      const c = l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : l.startsWith("@@") ? "hunk" : "";
+      return `<span class="${c}">${esc(l)}</span>`;
+    }).join("\n")}</pre>`;
+    text = [];
+  };
+  for (const d of diffs) {
+    if (d.startsWith("  ")) { text.push(d.slice(2)); continue; }
+    flush();
+    html += `<div class="diff-line"><span class="txt">${esc(d)}</span>${diffActions(d)}</div>`;
+  }
+  flush();
+  return html;
+}
+
+function fmtMs(v) { return v == null ? "—" : `${v} мс`; }
+
+// Действующий лимит шага и откуда он взят — тот же порядок, что на сервере.
+function limitInfo(step) {
+  const { test, run, config } = S.current;
+  const r = runStep(step.id);
+  if (step.max_time_ms) return { ms: step.max_time_ms, source: "лимит шага" };
+  if (test.max_time_ms) return { ms: test.max_time_ms, source: "лимит теста" };
+  if (r?.limit_ms && run?.max_time_ms) return { ms: run.max_time_ms, source: "задан при прогоне" };
+  if (config.max_time_ms) return { ms: config.max_time_ms, source: "из proxyrec.json" };
+  return { ms: null, source: "" };
+}
+
+function renderStepDetail() {
+  const step = S.current.test.steps.find((s) => s.id === S.stepId);
+  if (!step) return `<div class="empty">Выберите шаг</div>`;
+  const r = runStep(step.id);
+  const req = step.request;
+  const reqBody = bodyText(req);
+  const lim = limitInfo(step);
+  let verdict = "";
+  if (r?.error) {
+    verdict += `<div class="diffs"><b style="color:var(--fail)">Запрос не выполнен</b><div class="diff-line"><span class="txt">${esc(r.error)}</span></div></div>`;
+  }
+  if (r?.slow) {
+    verdict += `<div class="diffs slow">
+      <div class="row" style="justify-content:space-between"><b style="color:var(--warn)">⏱ Превышено время отклика</b>
+        <button class="btn small" data-action="limit-edit" data-step="${step.id}">Изменить лимит</button></div>
+      <div class="diff-line"><span class="txt">${fmtMs(r.elapsed_ms)} — больше лимита ${fmtMs(r.limit_ms)} (${lim.source})${step.elapsed_ms != null ? `; при записи было ${fmtMs(step.elapsed_ms)}` : ""}</span></div></div>`;
+  }
+  if (r?.diffs?.length) {
+    verdict += `<div class="diffs">
+      <div class="row" style="justify-content:space-between;margin-bottom:4px"><b style="color:var(--fail)">≠ Ответ отличается от эталона</b>
+        ${r.actual ? `<button class="btn small" data-action="accept-step">Принять фактический ответ</button>` : ""}</div>
+      ${renderDiffs(r.diffs)}</div>`;
+  }
+  if (r?.passed) verdict = `<div class="ok-box">✓ Ответ совпал с эталоном, время в норме</div>`;
+  const timing = `<div class="timing">
+      <span>Прогон: <b class="${r?.slow ? "t-bad" : ""}">${r ? fmtMs(r.elapsed_ms) : "—"}</b></span>
+      <span>Запись: <b>${fmtMs(step.elapsed_ms)}</b></span>
+      <span>Лимит: <b>${lim.ms ? fmtMs(lim.ms) : "нет"}</b>${lim.ms ? ` <span class="muted">(${lim.source})</span>` : ""}</span>
+      <button class="btn small ghost" data-action="limit-edit" data-step="${step.id}">${step.max_time_ms ? "Изменить лимит шага" : "Задать лимит шага"}</button>
+    </div>`;
+  return `<div class="card"><div class="card-h">
+      <span class="method m-${esc(req.method)}">${esc(req.method)}</span>
+      <span class="mono" style="font-weight:500;word-break:break-all;flex:1">${esc(r?.url || req.url)}</span>
+      <button class="btn small ghost danger" data-action="delete-step" title="Удалить шаг из теста">Удалить шаг</button>
+    </div><div class="card-b">
+      ${timing}
+      ${verdict}
+      <details ${r ? "" : "open"}><summary>Запрос</summary>
+        ${headersTable(req.headers)}
+        ${reqBody ? `<pre class="body">${esc(reqBody)}</pre>` : ""}
+      </details>
+      <h3>Ответ</h3>
+      <div class="resp-grid">
+        ${respPane("Эталон", step.response)}
+        ${r ? respPane("Факт", r.actual) : `<div class="pane"><div class="pane-h">Факт</div><div class="pane-b muted">Тест ещё не запускался</div></div>`}
+      </div>
+    </div></div>`;
+}
+
+// ---------- игнор ----------
+
+function renderIgnore() {
+  const { test, config } = S.current;
+  const rows = [];
+  const KIND = { json_paths: "JSON-путь", regex: "Regex", headers: "Заголовок" };
+  const add = (ig, scope, step) => {
+    for (const kind of Object.keys(KIND)) for (const p of (ig?.[kind] || [])) rows.push({ kind, p, scope, step });
+  };
+  add(test.ignore, "Весь тест", null);
+  test.steps.forEach((s) => add(s.ignore, `Шаг ${s.id}`, s.id));
+  const glob = [];
+  for (const kind of Object.keys(KIND)) for (const p of (config.ignore?.[kind] || [])) glob.push({ kind, p });
+  return `
+    <div class="card">
+      <div class="card-h">Правила теста <div class="spacer" style="flex:1"></div><button class="btn small primary" data-action="ignore-new">+ Добавить</button></div>
+      <div class="card-b">${rows.length ? `<table class="list"><tr><th>Вид</th><th>Шаблон</th><th>Где</th><th></th></tr>
+        ${rows.map((r) => `<tr><td>${KIND[r.kind]}</td><td class="mono">${esc(r.p)}</td><td>${r.scope}</td>
+          <td style="text-align:right"><button class="btn small ghost danger" data-action="ignore-remove" data-kind="${r.kind}" data-pattern="${esc(r.p)}" data-step="${r.step ?? ""}">Удалить</button></td></tr>`).join("")}
+      </table>` : `<div class="empty">Правил нет. Их удобно добавлять прямо из отличий на вкладке «Шаги».</div>`}</div>
+    </div>
+    <div class="card">
+      <div class="card-h">Общие правила <span class="muted" style="font-weight:400">из proxyrec.json, действуют на все тесты</span></div>
+      <div class="card-b">${glob.length ? `<table class="list">${glob.map((g) => `<tr><td style="width:140px">${KIND[g.kind]}</td><td class="mono">${esc(g.p)}</td></tr>`).join("")}</table>` : `<div class="empty">Нет</div>`}
+        <div class="muted" style="margin-top:8px">Сравниваемые заголовки: <span class="mono">${esc((config.compare_headers || []).join(", ") || "—")}</span></div>
+      </div>
+    </div>
+    <div class="card"><div class="card-b muted">
+      Синтаксис путей: <span class="mono">data.items[0].id</span> — конкретное поле, <span class="mono">items[*].id</span> — в каждом элементе,
+      <span class="mono">*.id</span> — любой ключ, <span class="mono">**.timestamp</span> — на любой глубине. Игнор поля скрывает и всё внутри него.
+      Регулярное выражение маскирует совпадения в строках и тексте.
+    </div></div>`;
+}
+
+let igContext = null;
+function openIgnoreDialog(kind, pattern) {
+  const step = S.tab === "steps" ? S.stepId : null;
+  igContext = { kind };
+  $("#igKind").value = kind;
+  $("#igPattern").value = pattern;
+  $("#igGeneralize").checked = false;
+  const scope = $("#igScope");
+  scope.innerHTML = (step ? `<option value="${step}">Только шаг ${step}</option>` : "") + `<option value="">Весь тест</option>` +
+    S.current.test.steps.filter((s) => s.id !== step).map((s) => `<option value="${s.id}">Шаг ${s.id}</option>`).join("");
+  syncIgnoreDialog();
+  $("#ignoreDlg").returnValue = "";
+  $("#ignoreDlg").showModal();
+  $("#igPattern").focus();
+}
+
+function syncIgnoreDialog() {
+  const kind = $("#igKind").value;
+  const hasIndex = /\[\d+\]/.test($("#igPattern").value);
+  $("#igGeneralizeRow").style.display = kind === "json_paths" && (hasIndex || $("#igGeneralize").checked) ? "" : "none";
+  $("#igHelp").textContent = {
+    json_paths: "Например: data.updatedAt, items[*].id, **.timestamp",
+    regex: "Совпадения заменяются маской в обоих ответах. Например: \\d{4}-\\d{2}-\\d{2}T[\\d:.]+",
+    headers: "Имя заголовка ответа, например ETag",
+  }[kind];
+}
+$("#igKind").addEventListener("change", syncIgnoreDialog);
+$("#igCancel").addEventListener("click", () => $("#ignoreDlg").close(""));
+$("#igPattern").addEventListener("input", syncIgnoreDialog);
+
+$("#ignoreDlg").addEventListener("close", async () => {
+  if ($("#ignoreDlg").returnValue !== "ok") return;
+  let pattern = $("#igPattern").value.trim();
+  const kind = $("#igKind").value;
+  if (kind === "json_paths" && $("#igGeneralize").checked) pattern = pattern.replace(/\[\d+\]/g, "[*]");
+  const step = $("#igScope").value;
+  await busy(null, async () => {
+    const cur = await api("POST", `${T(S.name)}/ignore`, { kind, pattern, steps: step ? [Number(step)] : null });
+    await loadState();
+    S.current = cur; renderMain();
+    toast(cur.run ? "Правило добавлено, прогон пересчитан" : "Правило добавлено", "ok");
+  });
+});
+
+// ---------- лимит времени ----------
+
+function openLimitDialog(stepId) {
+  const { test } = S.current;
+  const step = test.steps.find((s) => s.id === stepId);
+  $("#limScope").innerHTML = (step ? `<option value="${step.id}">Только шаг ${step.id}</option>` : "") + `<option value="">Весь тест</option>`;
+  $("#limMs").value = (step ? step.max_time_ms : test.max_time_ms) || "";
+  $("#limScope").onchange = () => {
+    const v = $("#limScope").value;
+    $("#limMs").value = (v ? test.steps.find((s) => s.id === Number(v)).max_time_ms : test.max_time_ms) || "";
+  };
+  $("#limitDlg").returnValue = "";
+  $("#limitDlg").showModal();
+  $("#limMs").focus();
+}
+$("#limCancel").addEventListener("click", () => $("#limitDlg").close(""));
+$("#limitDlg").addEventListener("close", async () => {
+  if ($("#limitDlg").returnValue !== "ok") return;
+  const ms = $("#limMs").value.trim();
+  const step = $("#limScope").value;
+  await busy(null, async () => {
+    if (ms && !(Number(ms) > 0)) throw new Error("Лимит — положительное число миллисекунд");
+    const cur = await api("POST", `${T(S.name)}/limit`, { ms: ms || null, step: step ? Number(step) : null });
+    await loadState();
+    S.current = cur; renderMain();
+    toast(ms ? `Лимит ${ms} мс ${step ? "для шага " + step : "для теста"} сохранён` : "Лимит снят", "ok");
+  });
+});
+
+// ---------- корреляция ----------
+
+function renderCorr() {
+  const { test } = S.current;
+  const rules = test.extract.map((r, i) => `<tr>
+      <td class="mono">${esc(r.var)}</td><td>шаг ${r.step}</td>
+      <td class="mono">${esc(r.from || "json")}: ${esc(r.path || r.name || "")}${r.regex ? ` / ${esc(r.regex)}` : ""}</td>
+      <td class="mono" title="${esc(r.value)}">${esc(String(r.value).slice(0, 40))}${String(r.value).length > 40 ? "…" : ""}</td>
+      <td>${r.used_in ? r.used_in.join(", ") : "—"}</td>
+      <td style="text-align:right"><button class="btn small ghost danger" data-action="extract-remove" data-index="${i}">Удалить</button></td></tr>`).join("");
+  const cands = S.candidates;
+  return `
+    <div class="card">
+      <div class="card-h">Правила корреляции</div>
+      <div class="card-b">
+        ${rules ? `<table class="list"><tr><th>Переменная</th><th>Откуда</th><th>Правило</th><th>Записанное значение</th><th>Используется в шагах</th><th></th></tr>${rules}</table>`
+          : `<div class="empty">Правил нет. Без них токены и id из старой записи будут отправляться как есть.</div>`}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h">Поиск кандидатов <div style="flex:1"></div><button class="btn small primary" data-action="find-candidates">Найти автоматически</button></div>
+      <div class="card-b">
+        ${cands == null ? `<div class="muted">Ищет значения из JSON-ответов, которые приложение потом отправляло в запросах: токены, id созданных объектов.</div>`
+          : cands.length ? `<table class="list"><tr><th></th><th>Переменная</th><th>Откуда</th><th>Значение</th><th>Используется в шагах</th></tr>
+              ${cands.map((c, i) => `<tr><td><input type="checkbox" class="cand" data-i="${i}" checked></td><td class="mono">${esc(c.var)}</td>
+                <td>шаг ${c.step} <span class="mono">${esc(c.path)}</span></td><td class="mono" title="${esc(c.value)}">${esc(c.value.slice(0, 40))}${c.value.length > 40 ? "…" : ""}</td>
+                <td>${c.used_in.join(", ")}</td></tr>`).join("")}</table>
+              <div class="row" style="margin-top:10px"><button class="btn primary" data-action="apply-candidates">Добавить выбранные</button></div>`
+          : `<div class="empty">Новых кандидатов не найдено.</div>`}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h">Добавить вручную</div>
+      <div class="card-b">
+        <form id="extractForm" class="form" autocomplete="off">
+          <label>Переменная</label><input type="text" name="var" required placeholder="csrf">
+          <label>Шаг-источник</label><select name="step">${test.steps.map((s) => `<option value="${s.id}">${s.id}. ${esc(s.request.method)} ${esc(shortUrl(s.request.url))}</option>`).join("")}</select>
+          <label>Откуда</label><select name="from"><option value="json">JSON-путь в ответе</option><option value="header">Заголовок ответа</option><option value="regex">Regex по телу ответа</option></select>
+          <label>Путь / заголовок</label><input type="text" name="what" class="mono" placeholder="data.token или Location">
+          <label>Regex (группа 1)</label><input type="text" name="regex" class="mono" placeholder="необязательно для json и header">
+          <label></label><div><button class="btn primary" type="submit">Добавить правило</button></div>
+        </form>
+        <div class="muted" style="margin-top:8px">Записанное значение берётся из эталонного ответа выбранного шага. При прогоне оно заменяется новым во всех последующих запросах.</div>
+      </div>
+    </div>`;
+}
+
+async function loadCandidates() {
+  S.candidates = await api("GET", `${T(S.name)}/candidates`);
+  renderMain();
+}
+
+// ---------- отрисовка ----------
+
+function renderMain() {
+  const main = $("#main");
+  const scroll = main.scrollTop;
+  main.innerHTML = S.view === "record" ? renderRecord() : S.view === "test" && S.current ? renderTest() : renderHome();
+  main.scrollTop = scroll;
+}
+
+// ---------- действия ----------
+
+const actions = {
+  home: () => goHome(),
+  open: (el) => openTest(el.dataset.name),
+  tab: (el) => { S.tab = el.dataset.tab; renderMain(); },
+  step: (el) => { S.stepId = Number(el.dataset.id); renderMain(); },
+  "record-form": () => { S.view = "record"; S.name = null; history.replaceState(null, "", "#/record"); renderSidebar(); renderMain(); },
+  "rec-mode": (el) => { S.recDraft = Object.fromEntries(new FormData($("#recForm"))); S.recMode = el.dataset.mode; renderMain(); },
+  "record-stop": (el) => busy(el, async () => {
+    const r = await api("POST", "/api/record/stop");
+    clearInterval(recPoll);
+    S.recording = { active: false };
+    renderRecChip();
+    toast(`Записано шагов: ${r.steps.length}`, "ok");
+    await loadState();
+    await openTest(r.name, { tab: r.steps.length > 1 ? "corr" : "steps" });
+    if (r.steps.length > 1) await loadCandidates();
+  }),
+  run: (el) => busy(el, async () => {
+    const cur = await api("POST", `${T(S.name)}/run`, { target: $("#target").value.trim(), max_time_ms: $("#maxTime").value });
+    await loadState();
+    const failed = cur.run.steps.find((s) => !s.passed);
+    S.current = cur;
+    S.stepId = failed ? failed.id : S.stepId;
+    S.tab = "steps";
+    renderMain();
+    toast(cur.run.passed ? "Тест прошёл" : "Тест упал", cur.run.passed ? "ok" : "err");
+  }),
+  "run-all": (el) => busy(el, async () => {
+    if (!S.tests.length) throw new Error("Тестов пока нет");
+    const res = await api("POST", "/api/run", { target: $("#target").value.trim(), max_time_ms: $("#maxTime").value });
+    const fail = res.filter((t) => t.status === "fail").length;
+    await loadState();
+    if (S.view === "test") await openTest(S.name, { keepStep: true }); else renderMain();
+    toast(`Прогнано ${res.length}: прошло ${res.length - fail}, упало ${fail}`, fail ? "err" : "ok");
+  }),
+  "accept-step": (el) => busy(el, async () => {
+    const cur = await api("POST", `${T(S.name)}/accept`, { steps: [S.stepId] });
+    await loadState();
+    S.current = cur; renderMain();
+    toast(`Эталон шага ${S.stepId} обновлён`, "ok");
+  }),
+  "accept-all": (el) => busy(el, async () => {
+    if (!confirm("Принять фактические ответы всех упавших шагов как новый эталон?")) return;
+    const cur = await api("POST", `${T(S.name)}/accept`, {});
+    await loadState();
+    S.current = cur; renderMain();
+    toast(`Обновлены шаги: ${cur.updated.join(", ")}`, "ok");
+  }),
+  "delete-test": (el) => busy(el, async () => {
+    if (!confirm(`Удалить тест «${S.name}» вместе с результатами?`)) return;
+    await api("DELETE", T(S.name));
+    toast("Тест удалён", "ok");
+    await loadState(); goHome();
+  }),
+  "delete-step": (el) => busy(el, async () => {
+    if (!confirm(`Удалить шаг ${S.stepId} из теста?`)) return;
+    const ids = S.current.test.steps.map((s) => s.id), i = ids.indexOf(S.stepId);
+    const cur = await api("POST", `${T(S.name)}/steps/remove`, { ids: [S.stepId] });
+    await loadState();
+    S.current = cur;
+    S.stepId = ids[i + 1] ?? ids[i - 1] ?? null;
+    renderMain();
+  }),
+  "ignore-diff": (el) => openIgnoreDialog(el.dataset.kind, el.dataset.pattern),
+  "ignore-new": () => openIgnoreDialog("json_paths", ""),
+  "limit-edit": (el) => openLimitDialog(el.dataset.step ? Number(el.dataset.step) : null),
+  "ignore-remove": (el) => busy(el, async () => {
+    const cur = await api("POST", `${T(S.name)}/ignore/remove`, {
+      kind: el.dataset.kind, pattern: el.dataset.pattern, step: el.dataset.step ? Number(el.dataset.step) : null });
+    await loadState();
+    S.current = cur; renderMain();
+  }),
+  "find-candidates": (el) => busy(el, loadCandidates),
+  "apply-candidates": (el) => busy(el, async () => {
+    const rules = [...document.querySelectorAll(".cand:checked")].map((c) => S.candidates[Number(c.dataset.i)]);
+    if (!rules.length) throw new Error("Ничего не выбрано");
+    S.current = await api("POST", `${T(S.name)}/extract`, { rules });
+    S.candidates = null;
+    toast(`Добавлено правил: ${rules.length}`, "ok");
+    renderMain();
+  }),
+  "extract-remove": (el) => busy(el, async () => {
+    S.current = await api("POST", `${T(S.name)}/extract/remove`, { index: Number(el.dataset.index) });
+    renderMain();
+  }),
+};
+
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-action]");
+  if (!el || el.closest("dialog")) return;
+  e.preventDefault();
+  actions[el.dataset.action]?.(el);
+});
+
+document.addEventListener("submit", (e) => {
+  const f = e.target;
+  if (f.id === "recForm") {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(f));
+    const body = { name: d.name.trim(), port: Number(d.port), hosts: d.hosts, reverse: S.recMode === "reverse" ? d.reverse : "",
+      keep_static: !!d.keep_static, overwrite: !!d.overwrite };
+    store("recForm", JSON.stringify({ port: body.port, hosts: body.hosts, reverse: d.reverse || "", keep_static: body.keep_static }));
+    busy(f.querySelector("[type=submit]"), async () => {
+      S.recording = await api("POST", "/api/record/start", body);
+      S.recDraft = null;
+      await loadState(); renderMain(); startRecPoll();
+    });
+  }
+  if (f.id === "extractForm") {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(f));
+    const rule = { var: d.var.trim(), step: Number(d.step), from: d.from };
+    if (d.from === "json") rule.path = d.what.trim();
+    if (d.from === "header") rule.name = d.what.trim();
+    if (d.regex.trim()) rule.regex = d.regex.trim();
+    busy(f.querySelector("[type=submit]"), async () => {
+      if (d.from === "json" && !rule.path) throw new Error("Укажите JSON-путь");
+      if (d.from === "header" && !rule.name) throw new Error("Укажите заголовок");
+      if (d.from === "regex" && !rule.regex) throw new Error("Укажите регулярное выражение");
+      S.current = await api("POST", `${T(S.name)}/extract`, { rules: [rule] });
+      toast("Правило добавлено", "ok");
+      renderMain();
+    });
+  }
+});
+
+$("#filter").addEventListener("input", renderSidebar);
+$("#target").value = store("target") || "";
+$("#maxTime").value = store("maxTime") || "";
+$("#maxTime").addEventListener("change", () => store("maxTime", $("#maxTime").value.trim()));
+$("#target").addEventListener("change", () => store("target", $("#target").value.trim()));
+
+// ---------- старт ----------
+
+(async function init() {
+  try { await loadState(); } catch (e) { toast(e.message, "err"); }
+  const h = decodeURIComponent(location.hash);
+  if (S.recording.active || h === "#/record") { S.view = "record"; renderMain(); if (S.recording.active) startRecPoll(); }
+  else if (h.startsWith("#/test/")) openTest(h.slice(7));
+  else renderMain();
+})();
+</script>
+</body>
+</html>
